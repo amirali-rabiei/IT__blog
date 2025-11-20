@@ -289,6 +289,7 @@ Note: This is a compact demo implementation. For production use:
 """
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -316,8 +317,23 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- Database models ---
 
+app = FastAPI(title="Company Single-File Backend")
+
+origins = [
+    "http://localhost:5173",
+    "https://it-blog.vercel.app"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 class Product(Base):
     __tablename__ = "products"
