@@ -42,6 +42,7 @@ class BlogPost(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=True)
     image = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class About(Base):
     __tablename__ = "about"
