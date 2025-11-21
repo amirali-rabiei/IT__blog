@@ -210,6 +210,7 @@ def create_award(title: str = Form(...), description: str = Form(None), image: U
 
 @app.post("/admin/blog", response_model=BlogRead)
 def create_blog(title: str = Form(...), content: str = Form(None), image: UploadFile = File(None), db: Session = Depends(get_db)):
+       print("IMAGE RECEIVED:", image.filename if image else "NO FILE")
     img_path = save_upload(image) if image else None
     b = BlogPost(title=title, content=content, image=img_path)
     db.add(b)
