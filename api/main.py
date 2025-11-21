@@ -218,6 +218,16 @@ def create_blog(title: str = Form(...), content: str = Form(None), image: Upload
     db.refresh(b)
     return b
 
+@app.delete("/admin/blog/{post_id}")
+def delete_blog(post_id: int, db: Session = Depends(get_db)):
+    b = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not b:
+        raise HTTPException(404, "Blog post not found")
+    db.delete(b)
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/admin/about")
 def set_about(content: str = Form(...), db: Session = Depends(get_db)):
     about = db.query(About).first()
