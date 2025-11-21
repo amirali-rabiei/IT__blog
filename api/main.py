@@ -148,14 +148,25 @@ def get_blog(post_id: int, db: Session = Depends(get_db)):
     return post
 
 @app.put("/admin/blog/{post_id}", response_model=BlogRead)
-def update_blog(post_id: int, title: str = Form(...), description: str = Form(None) ,content: str = Form(None), image: UploadFile = File(None), db: Session = Depends(get_db)):
+def update_blog(
+    post_id: int, 
+    title: str = Form(...),
+    description: str = Form(None),
+    content: str = Form(None),
+    image: Optional[UploadFile] = File(None),  # فایل جدید
+    image_path: Optional[str] = Form(None),    # مسیر عکس قبلی
+    db: Session = Depends(get_db)
+):
     b = db.query(BlogPost).filter(BlogPost.id == post_id).first()
     if not b:
         raise HTTPException(404, "Blog post not found")
     b.title = title
+    b.description = description
     b.content = content
     if image:
-        b.image = save_upload(image)
+        b.image = save_upload(image)  
+    elif image_path:
+        b.image = image_path         
     db.commit()
     db.refresh(b)
     return b
