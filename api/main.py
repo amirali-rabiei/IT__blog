@@ -74,6 +74,7 @@ class BlogRead(BaseModel):
     title: str
     content: Optional[str]
     image: Optional[str]
+    created_at: Optional[datetime]  
     class Config:
         orm_mode = True
 
