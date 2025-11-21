@@ -41,6 +41,7 @@ class BlogPost(Base):
     __tablename__ = "blog_posts"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
     content = Column(Text, nullable=True)
     image = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -72,6 +73,7 @@ class AwardRead(BaseModel):
 class BlogRead(BaseModel):
     id: int
     title: str
+    description: Optional[str]
     content: Optional[str]
     image: Optional[str]
     created_at: Optional[datetime]  
@@ -146,7 +148,7 @@ def get_blog(post_id: int, db: Session = Depends(get_db)):
     return post
 
 @app.put("/admin/blog/{post_id}", response_model=BlogRead)
-def update_blog(post_id: int, title: str = Form(...), content: str = Form(None), image: UploadFile = File(None), db: Session = Depends(get_db)):
+def update_blog(post_id: int, title: str = Form(...), description: str = Form(None) ,content: str = Form(None), image: UploadFile = File(None), db: Session = Depends(get_db)):
     b = db.query(BlogPost).filter(BlogPost.id == post_id).first()
     if not b:
         raise HTTPException(404, "Blog post not found")
@@ -209,10 +211,10 @@ def create_award(title: str = Form(...), description: str = Form(None), image: U
     return a
 
 @app.post("/admin/blog", response_model=BlogRead)
-def create_blog(title: str = Form(...), content: str = Form(None), image: UploadFile = File(None), db: Session = Depends(get_db)):
+def create_blog(title: str = Form(...), content: str = Form(None),  description: str = Form(None) ,image: UploadFile = File(None), db: Session = Depends(get_db)):
     print("IMAGE RECEIVED:", image.filename if image else "NO FILE")
     img_path = save_upload(image) if image else None
-    b = BlogPost(title=title, content=content, image=img_path)
+    b = BlogPost(title=title,description=description,content=content, image=img_path)
     db.add(b)
     db.commit()
     db.refresh(b)
