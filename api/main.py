@@ -191,9 +191,10 @@ def get_blog(post_id: int, db: Session = Depends(get_db)):
 @app.get("/activities", response_model=List[ActivityRead])
 def list_activities(language: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(Activity)
-    if language:
+    if language in ["fa", "en", "ar"]:
         query = query.filter(Activity.language == language)
     return query.all()
+
 
 @app.get("/activities/{activity_id}", response_model=ActivityRead)
 def get_activity(activity_id: int, db: Session = Depends(get_db)):
