@@ -12,9 +12,6 @@ import os
 import shutil
 import uuid
 
-# ------------------------------
-# Paths & Database
-# ------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "site_data.db")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -25,17 +22,17 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# ------------------------------
+# ---------------------------
 # Database Models
-# ------------------------------
+# ---------------------------
+
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    content = Column(Text, nullable=True)
     image = Column(String(512), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    language = Column(String(2), nullable=False, default="fa")  # fa, ar, en
 
 class Award(Base):
     __tablename__ = "awards"
@@ -52,6 +49,7 @@ class BlogPost(Base):
     content = Column(Text, nullable=True)
     image = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    language = Column(String(2), nullable=False, default="fa")  # fa, ar, en
 
 class About(Base):
     __tablename__ = "about"
@@ -66,19 +64,20 @@ class Activity(Base):
     content = Column(Text, nullable=True)
     image = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    language = Column(String(2), nullable=False, default="fa")  # fa, ar, en
 
 Base.metadata.create_all(bind=engine)
 
-# ------------------------------
+# ---------------------------
 # Pydantic Schemas
-# ------------------------------
+# ---------------------------
+
 class ProductRead(BaseModel):
     id: int
     title: str
     description: Optional[str]
-    content: Optional[str]
     image: Optional[str]
-    created_at: Optional[datetime]
+    language: str
     class Config:
         orm_mode = True
 
@@ -97,6 +96,7 @@ class BlogRead(BaseModel):
     content: Optional[str]
     image: Optional[str]
     created_at: Optional[datetime]
+    language: str
     class Config:
         orm_mode = True
 
@@ -113,22 +113,23 @@ class ActivityRead(BaseModel):
     content: Optional[str]
     image: Optional[str]
     created_at: Optional[datetime]
+    language: str
     class Config:
         orm_mode = True
 
-# ------------------------------
-# FastAPI App
-# ------------------------------
-app = FastAPI(title="Company Backend")
+# ---------------------------
+# App Config
+# ---------------------------
+
+app = FastAPI(title="Company Single-File Backend")
 
 origins = [
     "http://localhost:5173",
     "https://it-blog.vercel.app",
 ]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -136,9 +137,10 @@ app.add_middleware(
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# ------------------------------
-# Utils
-# ------------------------------
+# ---------------------------
+# Utilities
+# ---------------------------
+
 def get_db():
     db = SessionLocal()
     try:
@@ -154,12 +156,16 @@ def save_upload(file: UploadFile) -> str:
         shutil.copyfileobj(file.file, buffer)
     return f"/uploads/{new_name}"
 
-# ------------------------------
-# PUBLIC ENDPOINTS
-# ------------------------------
+# ---------------------------
+# Public Endpoints
+# ---------------------------
+
 @app.get("/products", response_model=List[ProductRead])
-def list_products(db: Session = Depends(get_db)):
-    return db.query(Product).all()
+def list_products(language: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(Product)
+    if language:
+        query = query.filter(Product.language == language)
+    return query.all()
 
 @app.get("/products/{product_id}", response_model=ProductRead)
 def get_product(product_id: int, db: Session = Depends(get_db)):
@@ -168,13 +174,12 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Product not found")
     return p
 
-@app.get("/awards", response_model=List[AwardRead])
-def list_awards(db: Session = Depends(get_db)):
-    return db.query(Award).all()
-
 @app.get("/blog", response_model=List[BlogRead])
-def list_blog(db: Session = Depends(get_db)):
-    return db.query(BlogPost).all()
+def list_blog(language: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(BlogPost)
+    if language:
+        query = query.filter(BlogPost.language == language)
+    return query.all()
 
 @app.get("/blog/{post_id}", response_model=BlogRead)
 def get_blog(post_id: int, db: Session = Depends(get_db)):
@@ -183,13 +188,12 @@ def get_blog(post_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Blog post not found")
     return post
 
-@app.get("/about", response_model=Optional[AboutRead])
-def get_about(db: Session = Depends(get_db)):
-    return db.query(About).first()
-
 @app.get("/activities", response_model=List[ActivityRead])
-def list_activities(db: Session = Depends(get_db)):
-    return db.query(Activity).all()
+def list_activities(language: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(Activity)
+    if language:
+        query = query.filter(Activity.language == language)
+    return query.all()
 
 @app.get("/activities/{activity_id}", response_model=ActivityRead)
 def get_activity(activity_id: int, db: Session = Depends(get_db)):
@@ -198,41 +202,101 @@ def get_activity(activity_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Activity not found")
     return act
 
-# ------------------------------
-# ADMIN ENDPOINTS
-# ------------------------------
-@app.post("/admin/login")
-def admin_login(username: str = Form(...), password: str = Form(...)):
-    return {"ok": True}
+@app.get("/about", response_model=Optional[AboutRead])
+def get_about(db: Session = Depends(get_db)):
+    return db.query(About).first()
 
-# PRODUCT
+# ---------------------------
+# Admin Endpoints
+# ---------------------------
+
 @app.post("/admin/products", response_model=ProductRead)
-def create_product(title: str = Form(...), description: str = Form(None), content: str = Form(None),
-                   image: UploadFile = File(None), db: Session = Depends(get_db)):
+def create_product(title: str = Form(...), description: str = Form(None), image: UploadFile = File(None), language: str = Form("fa"), db: Session = Depends(get_db)):
     img_path = save_upload(image) if image else None
-    p = Product(title=title, description=description, content=content, image=img_path)
+    p = Product(title=title, description=description, image=img_path, language=language)
     db.add(p)
     db.commit()
     db.refresh(p)
     return p
 
 @app.put("/admin/products/{product_id}", response_model=ProductRead)
-def update_product(product_id: int, title: str = Form(...), description: str = Form(None),
-                   content: str = Form(None), image: UploadFile = File(None), image_path: str = Form(None),
-                   db: Session = Depends(get_db)):
+def update_product(product_id: int, title: str = Form(...), description: str = Form(None), image: UploadFile = File(None), language: str = Form("fa"), db: Session = Depends(get_db)):
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(404, "Product not found")
     p.title = title
     p.description = description
-    p.content = content
+    p.language = language
     if image:
         p.image = save_upload(image)
-    elif image_path:
-        p.image = image_path
     db.commit()
     db.refresh(p)
     return p
+
+@app.post("/admin/blog", response_model=BlogRead)
+def create_blog(title: str = Form(...), content: str = Form(None), description: str = Form(None), image: UploadFile = File(None), language: str = Form("fa"), db: Session = Depends(get_db)):
+    img_path = save_upload(image) if image else None
+    b = BlogPost(title=title, description=description, content=content, image=img_path, language=language)
+    db.add(b)
+    db.commit()
+    db.refresh(b)
+    return b
+
+@app.put("/admin/blog/{post_id}", response_model=BlogRead)
+def update_blog(
+    post_id: int,
+    title: str = Form(...),
+    description: str = Form(None),
+    content: str = Form(None),
+    image: UploadFile = File(None),
+    image_path: str = Form(None),
+    language: str = Form("fa"),
+    db: Session = Depends(get_db)
+):
+    b = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not b:
+        raise HTTPException(404, "Blog post not found")
+    b.title = title
+    b.description = description
+    b.content = content
+    b.language = language
+    if image:
+        b.image = save_upload(image)
+    elif image_path:
+        b.image = image_path
+    db.commit()
+    db.refresh(b)
+    return b
+
+@app.post("/admin/activity", response_model=ActivityRead)
+def create_activity(title: str = Form(...), description: str = Form(None), content: str = Form(None), image: UploadFile = File(None), language: str = Form("fa"), db: Session = Depends(get_db)):
+    img_path = save_upload(image) if image else None
+    act = Activity(title=title, description=description, content=content, image=img_path, language=language)
+    db.add(act)
+    db.commit()
+    db.refresh(act)
+    return act
+
+@app.put("/admin/activity/{activity_id}", response_model=ActivityRead)
+def update_activity(activity_id: int, title: str = Form(...), description: str = Form(None), content: str = Form(None), image: UploadFile = File(None), image_path: str = Form(None), language: str = Form("fa"), db: Session = Depends(get_db)):
+    act = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not act:
+        raise HTTPException(404, "Activity not found")
+    act.title = title
+    act.description = description
+    act.content = content
+    act.language = language
+    if image:
+        act.image = save_upload(image)
+    elif image_path:
+        act.image = image_path
+    db.commit()
+    db.refresh(act)
+    return act
+
+# ---------------------------
+# Misc
+# ---------------------------
 
 @app.delete("/admin/products/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db)):
@@ -243,83 +307,14 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# AWARD
-@app.post("/admin/awards", response_model=AwardRead)
-def create_award(title: str = Form(...), description: str = Form(None),
-                 image: UploadFile = File(None), db: Session = Depends(get_db)):
-    img_path = save_upload(image) if image else None
-    a = Award(title=title, description=description, image=img_path)
-    db.add(a)
-    db.commit()
-    db.refresh(a)
-    return a
-
-# BLOG
-@app.post("/admin/blog", response_model=BlogRead)
-def create_blog(title: str = Form(...), description: str = Form(None), content: str = Form(None),
-                image: UploadFile = File(None), db: Session = Depends(get_db)):
-    img_path = save_upload(image) if image else None
-    b = BlogPost(title=title, description=description, content=content, image=img_path)
-    db.add(b)
-    db.commit()
-    db.refresh(b)
-    return b
-
-@app.put("/admin/blog/{post_id}", response_model=BlogRead)
-def update_blog(post_id: int, title: str = Form(...), description: str = Form(None),
-                content: str = Form(None), image: UploadFile = File(None), image_path: str = Form(None),
-                db: Session = Depends(get_db)):
-    b = db.query(BlogPost).filter(BlogPost.id == post_id).first()
-    if not b:
-        raise HTTPException(404, "Blog not found")
-    b.title = title
-    b.description = description
-    b.content = content
-    if image:
-        b.image = save_upload(image)
-    elif image_path:
-        b.image = image_path
-    db.commit()
-    db.refresh(b)
-    return b
-
 @app.delete("/admin/blog/{post_id}")
 def delete_blog(post_id: int, db: Session = Depends(get_db)):
     b = db.query(BlogPost).filter(BlogPost.id == post_id).first()
     if not b:
-        raise HTTPException(404, "Blog not found")
+        raise HTTPException(404, "Blog post not found")
     db.delete(b)
     db.commit()
     return {"ok": True}
-
-# ACTIVITY
-@app.post("/admin/activity", response_model=ActivityRead)
-def create_activity(title: str = Form(...), description: str = Form(None), content: str = Form(None),
-                    image: UploadFile = File(None), db: Session = Depends(get_db)):
-    img_path = save_upload(image) if image else None
-    act = Activity(title=title, description=description, content=content, image=img_path)
-    db.add(act)
-    db.commit()
-    db.refresh(act)
-    return act
-
-@app.put("/admin/activity/{activity_id}", response_model=ActivityRead)
-def update_activity(activity_id: int, title: str = Form(...), description: str = Form(None),
-                    content: str = Form(None), image: UploadFile = File(None), image_path: str = Form(None),
-                    db: Session = Depends(get_db)):
-    act = db.query(Activity).filter(Activity.id == activity_id).first()
-    if not act:
-        raise HTTPException(404, "Activity not found")
-    act.title = title
-    act.description = description
-    act.content = content
-    if image:
-        act.image = save_upload(image)
-    elif image_path:
-        act.image = image_path
-    db.commit()
-    db.refresh(act)
-    return act
 
 @app.delete("/admin/activity/{activity_id}")
 def delete_activity(activity_id: int, db: Session = Depends(get_db)):
@@ -330,7 +325,6 @@ def delete_activity(activity_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# ABOUT
 @app.post("/admin/about")
 def set_about(content: str = Form(...), db: Session = Depends(get_db)):
     about = db.query(About).first()
@@ -342,13 +336,11 @@ def set_about(content: str = Form(...), db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# UPLOAD IMAGE
 @app.post("/admin/upload")
 def upload_image(file: UploadFile = File(...)):
     path = save_upload(file)
     return {"url": path}
 
-# HEALTH CHECK
 @app.get("/ping")
 def ping():
     return {"pong": True}
