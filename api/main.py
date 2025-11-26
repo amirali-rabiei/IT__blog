@@ -167,7 +167,7 @@ def save_upload(file: UploadFile) -> str:
 @app.get("/products", response_model=List[ProductRead])
 def list_products(language: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(Product)
-    if language:
+    if language in ["fa", "en", "ar"]:
         query = query.filter(Product.language == language)
     return query.all()
 
@@ -181,7 +181,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 @app.get("/blog", response_model=List[BlogRead])
 def list_blog(language: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(BlogPost)
-    if language:
+    if language in ["fa", "en", "ar"]:
         query = query.filter(BlogPost.language == language)
     return query.all()
 
