@@ -119,7 +119,7 @@ def create_blog(
     ]
 
     for t in translations:
-        if t["title"]:  # فقط اگر عنوان داشت اضافه می‌کنیم
+        if t["title"]:  
             trans = BlogTranslation(blog_id=blog.id, **t)
             db.add(trans)
     db.commit()
@@ -133,7 +133,6 @@ def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends
         raise HTTPException(404, "Blog post not found")
 
     if language in ["fa", "en", "ar"]:
-        # فقط ترجمه با زبان مورد نظر را نگه می‌داریم
         post.translations = [t for t in post.translations if t.language == language]
 
     return post
@@ -141,8 +140,12 @@ def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends
 
 
 @app.get("/blog", response_model=List[BlogRead])
-def list_blog(db: Session = Depends(get_db)):
-    return db.query(BlogPost).all()
+def list_blog(language: Optional[str] = Query(None, description="fa, en, ar"), db: Session = Depends(get_db)):
+    blogs = db.query(BlogPost).all()
+    if language in ["fa", "en", "ar"]:
+        for b in blogs:
+            b.translations = [t for t in b.translations if t.language == language]
+    return blogs
 
 # ---------------------------
 # Image Upload
