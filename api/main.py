@@ -139,20 +139,29 @@ def save_upload(file: UploadFile) -> str:
     with open(path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return f"/uploads/{new_name}"
-
 def update_translations(db: Session, item, translations_data: dict, model_translation):
     for lang in ["fa", "en", "ar"]:
         t_data = translations_data.get(lang)
-        if t_data and t_data.get("title") is not None:
-            trans = db.query(model_translation).filter_by(**{f"{model_translation.__tablename__.split('_')[0]}_id": item.id, "language": lang}).first()
+        if t_data and t_data.get("title"):  # فقط اگر title پر شده باشد
+            trans = db.query(model_translation).filter_by(**{
+                f"{model_translation.__tablename__.split('_')[0]}_id": item.id,
+                "language": lang
+            }).first()
             if trans:
                 trans.title = t_data.get("title")
                 trans.description = t_data.get("description")
                 trans.content = t_data.get("content")
             else:
-                db.add(model_translation(**{f"{model_translation.__tablename__.split('_')[0]}_id": item.id, **t_data}))
+                db.add(model_translation(
+                    **{f"{model_translation.__tablename__.split('_')[0]}_id": item.id,
+                       "language": lang,
+                       "title": t_data.get("title"),
+                       "description": t_data.get("description"),
+                       "content": t_data.get("content")}
+                ))
     db.commit()
     db.refresh(item)
+
 
 # ---------------------------
 # CRUD Endpoints
