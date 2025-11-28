@@ -127,11 +127,15 @@ def create_blog(
     return blog
 
 @app.get("/blog/{post_id}", response_model=BlogRead)
-def get_blog(post_id: int, db: Session = Depends(get_db)):
-    blog = db.query(BlogPost).filter(BlogPost.id == post_id).first()
-    if not blog:
-        raise HTTPException(404, "Blog not found")
-    return blog
+def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(BlogPost).filter(BlogPost.id == post_id)
+    if language in ["fa", "en", "ar"]:
+        query = query.filter(BlogPost.language == language)
+    post = query.first()
+    if not post:
+        raise HTTPException(404, "Blog post not found")
+    return post
+
 
 @app.get("/blog", response_model=List[BlogRead])
 def list_blog(db: Session = Depends(get_db)):
