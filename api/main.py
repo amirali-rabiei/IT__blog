@@ -5,12 +5,12 @@ from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, relationship, Session
 from datetime import datetime
 import os, shutil, uuid
 
 # ---------------------------
-# Paths
+# Paths and DB
 # ---------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "site_data.db")
@@ -25,6 +25,23 @@ Base = declarative_base()
 # ---------------------------
 # Database Models
 # ---------------------------
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    image = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    translations = relationship("ProductTranslation", back_populates="product", cascade="all, delete-orphan")
+
+class ProductTranslation(Base):
+    __tablename__ = "product_translations"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    language = Column(String(2), nullable=False)  # fa, en, ar
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    content = Column(Text, nullable=True)
+    product = relationship("Product", back_populates="translations")
+
 class BlogPost(Base):
     __tablename__ = "blog_posts"
     id = Column(Integer, primary_key=True, index=True)
@@ -36,18 +53,40 @@ class BlogTranslation(Base):
     __tablename__ = "blog_translations"
     id = Column(Integer, primary_key=True, index=True)
     blog_id = Column(Integer, ForeignKey("blog_posts.id"))
-    language = Column(String(2), nullable=False)  # fa, en, ar
+    language = Column(String(2), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     content = Column(Text, nullable=True)
     blog = relationship("BlogPost", back_populates="translations")
 
+class Activity(Base):
+    __tablename__ = "activities"
+    id = Column(Integer, primary_key=True, index=True)
+    image = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    translations = relationship("ActivityTranslation", back_populates="activity", cascade="all, delete-orphan")
+
+class ActivityTranslation(Base):
+    __tablename__ = "activity_translations"
+    id = Column(Integer, primary_key=True, index=True)
+    activity_id = Column(Integer, ForeignKey("activities.id"))
+    language = Column(String(2), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    content = Column(Text, nullable=True)
+    activity = relationship("Activity", back_populates="translations")
+
+class About(Base):
+    __tablename__ = "about"
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(Text, nullable=True)
+
 Base.metadata.create_all(bind=engine)
 
 # ---------------------------
-# Pydantic Schemas
+# Schemas
 # ---------------------------
-class BlogTranslationRead(BaseModel):
+class TranslationRead(BaseModel):
     language: str
     title: str
     description: Optional[str]
@@ -55,18 +94,30 @@ class BlogTranslationRead(BaseModel):
     class Config:
         orm_mode = True
 
-class BlogRead(BaseModel):
+class ProductRead(BaseModel):
     id: int
     image: Optional[str]
     created_at: datetime
-    translations: List[BlogTranslationRead]
+    translations: List[TranslationRead]
+    class Config:
+        orm_mode = True
+
+class BlogRead(ProductRead):
+    pass
+
+class ActivityRead(ProductRead):
+    pass
+
+class AboutRead(BaseModel):
+    id: int
+    content: Optional[str]
     class Config:
         orm_mode = True
 
 # ---------------------------
 # App Config
 # ---------------------------
-app = FastAPI(title="Multi-language Blog Backend")
+app = FastAPI(title="Multi-language Company Backend")
 origins = ["http://localhost:5173", "https://it-blog.vercel.app"]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -84,79 +135,236 @@ def get_db():
 def save_upload(file: UploadFile) -> str:
     ext = os.path.splitext(file.filename)[1]
     new_name = f"{uuid.uuid4().hex}{ext}"
-    dest_path = os.path.join(UPLOAD_DIR, new_name)
-    with open(dest_path, "wb") as buffer:
+    path = os.path.join(UPLOAD_DIR, new_name)
+    with open(path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return f"/uploads/{new_name}"
 
+def update_translations(db: Session, item, translations_data: dict, model_translation):
+    for lang in ["fa", "en", "ar"]:
+        t_data = translations_data.get(lang)
+        if t_data and t_data.get("title") is not None:
+            trans = db.query(model_translation).filter_by(**{f"{model_translation.__tablename__.split('_')[0]}_id": item.id, "language": lang}).first()
+            if trans:
+                trans.title = t_data.get("title")
+                trans.description = t_data.get("description")
+                trans.content = t_data.get("content")
+            else:
+                db.add(model_translation(**{f"{model_translation.__tablename__.split('_')[0]}_id": item.id, **t_data}))
+    db.commit()
+    db.refresh(item)
+
 # ---------------------------
-# Endpoints
+# CRUD Endpoints
 # ---------------------------
+
+# --- Products ---
+@app.post("/admin/products", response_model=ProductRead)
+def create_product(
+    image: UploadFile = File(None),
+    fa_title: str = Form(...), fa_description: str = Form(None), fa_content: str = Form(None),
+    en_title: str = Form(None), en_description: str = Form(None), en_content: str = Form(None),
+    ar_title: str = Form(None), ar_description: str = Form(None), ar_content: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    product = Product(image=save_upload(image) if image else None)
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    translations = {
+        "fa": {"title": fa_title, "description": fa_description, "content": fa_content},
+        "en": {"title": en_title, "description": en_description, "content": en_content},
+        "ar": {"title": ar_title, "description": ar_description, "content": ar_content},
+    }
+    update_translations(db, product, translations, ProductTranslation)
+    return product
+
+@app.put("/admin/products/{product_id}", response_model=ProductRead)
+def update_product_endpoint(
+    product_id: int,
+    image: UploadFile = File(None),
+    fa_title: str = Form(None), fa_description: str = Form(None), fa_content: str = Form(None),
+    en_title: str = Form(None), en_description: str = Form(None), en_content: str = Form(None),
+    ar_title: str = Form(None), ar_description: str = Form(None), ar_content: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    if image:
+        product.image = save_upload(image)
+        db.commit()
+    translations = {
+        "fa": {"title": fa_title, "description": fa_description, "content": fa_content},
+        "en": {"title": en_title, "description": en_description, "content": en_content},
+        "ar": {"title": ar_title, "description": ar_description, "content": ar_content},
+    }
+    update_translations(db, product, translations, ProductTranslation)
+    return product
+
+@app.delete("/admin/products/{product_id}")
+def delete_product_endpoint(product_id: int, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    db.delete(product)
+    db.commit()
+    return {"ok": True}
+
+# --- Blog ---
 @app.post("/admin/blog", response_model=BlogRead)
 def create_blog(
     image: UploadFile = File(None),
-    fa_title: str = Form(...),
-    fa_description: str = Form(None),
-    fa_content: str = Form(None),
-    en_title: str = Form(None),
-    en_description: str = Form(None),
-    en_content: str = Form(None),
-    ar_title: str = Form(None),
-    ar_description: str = Form(None),
-    ar_content: str = Form(None),
+    fa_title: str = Form(...), fa_description: str = Form(None), fa_content: str = Form(None),
+    en_title: str = Form(None), en_description: str = Form(None), en_content: str = Form(None),
+    ar_title: str = Form(None), ar_description: str = Form(None), ar_content: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    img_path = save_upload(image) if image else None
-    blog = BlogPost(image=img_path)
+    blog = BlogPost(image=save_upload(image) if image else None)
     db.add(blog)
     db.commit()
     db.refresh(blog)
-
-    translations = [
-        {"language": "fa", "title": fa_title, "description": fa_description, "content": fa_content},
-        {"language": "en", "title": en_title, "description": en_description, "content": en_content},
-        {"language": "ar", "title": ar_title, "description": ar_description, "content": ar_content},
-    ]
-
-    for t in translations:
-        if t["title"]:  
-            trans = BlogTranslation(blog_id=blog.id, **t)
-            db.add(trans)
-    db.commit()
-    db.refresh(blog)
+    translations = {
+        "fa": {"title": fa_title, "description": fa_description, "content": fa_content},
+        "en": {"title": en_title, "description": en_description, "content": en_content},
+        "ar": {"title": ar_title, "description": ar_description, "content": ar_content},
+    }
+    update_translations(db, blog, translations, BlogTranslation)
     return blog
 
-@app.get("/blog/{post_id}", response_model=BlogRead)
-def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
-    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
-    if not post:
+@app.put("/admin/blog/{post_id}", response_model=BlogRead)
+def update_blog_endpoint(
+    post_id: int,
+    image: UploadFile = File(None),
+    fa_title: str = Form(None), fa_description: str = Form(None), fa_content: str = Form(None),
+    en_title: str = Form(None), en_description: str = Form(None), en_content: str = Form(None),
+    ar_title: str = Form(None), ar_description: str = Form(None), ar_content: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    blog = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not blog:
         raise HTTPException(404, "Blog post not found")
+    if image:
+        blog.image = save_upload(image)
+        db.commit()
+    translations = {
+        "fa": {"title": fa_title, "description": fa_description, "content": fa_content},
+        "en": {"title": en_title, "description": en_description, "content": en_content},
+        "ar": {"title": ar_title, "description": ar_description, "content": ar_content},
+    }
+    update_translations(db, blog, translations, BlogTranslation)
+    return blog
 
-    if language in ["fa", "en", "ar"]:
-        post.translations = [t for t in post.translations if t.language == language]
+@app.delete("/admin/blog/{post_id}")
+def delete_blog_endpoint(post_id: int, db: Session = Depends(get_db)):
+    blog = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not blog:
+        raise HTTPException(404, "Blog post not found")
+    db.delete(blog)
+    db.commit()
+    return {"ok": True}
 
-    return post
+# --- Activity ---
+@app.post("/admin/activity", response_model=ActivityRead)
+def create_activity(
+    image: UploadFile = File(None),
+    fa_title: str = Form(...), fa_description: str = Form(None), fa_content: str = Form(None),
+    en_title: str = Form(None), en_description: str = Form(None), en_content: str = Form(None),
+    ar_title: str = Form(None), ar_description: str = Form(None), ar_content: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    act = Activity(image=save_upload(image) if image else None)
+    db.add(act)
+    db.commit()
+    db.refresh(act)
+    translations = {
+        "fa": {"title": fa_title, "description": fa_description, "content": fa_content},
+        "en": {"title": en_title, "description": en_description, "content": en_content},
+        "ar": {"title": ar_title, "description": ar_description, "content": ar_content},
+    }
+    update_translations(db, act, translations, ActivityTranslation)
+    return act
 
+@app.put("/admin/activity/{activity_id}", response_model=ActivityRead)
+def update_activity_endpoint(
+    activity_id: int,
+    image: UploadFile = File(None),
+    fa_title: str = Form(None), fa_description: str = Form(None), fa_content: str = Form(None),
+    en_title: str = Form(None), en_description: str = Form(None), en_content: str = Form(None),
+    ar_title: str = Form(None), ar_description: str = Form(None), ar_content: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    act = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not act:
+        raise HTTPException(404, "Activity not found")
+    if image:
+        act.image = save_upload(image)
+        db.commit()
+    translations = {
+        "fa": {"title": fa_title, "description": fa_description, "content": fa_content},
+        "en": {"title": en_title, "description": en_description, "content": en_content},
+        "ar": {"title": ar_title, "description": ar_description, "content": ar_content},
+    }
+    update_translations(db, act, translations, ActivityTranslation)
+    return act
 
+@app.delete("/admin/activity/{activity_id}")
+def delete_activity_endpoint(activity_id: int, db: Session = Depends(get_db)):
+    act = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not act:
+        raise HTTPException(404, "Activity not found")
+    db.delete(act)
+    db.commit()
+    return {"ok": True}
+
+# --- About ---
+@app.post("/admin/about")
+def set_about(content: str = Form(...), db: Session = Depends(get_db)):
+    about = db.query(About).first()
+    if not about:
+        about = About(content=content)
+        db.add(about)
+    else:
+        about.content = content
+    db.commit()
+    return {"ok": True}
+
+# --- Upload Image ---
+@app.post("/admin/upload")
+def upload_image(file: UploadFile = File(...)):
+    return {"url": save_upload(file)}
+
+# --- Public Endpoints ---
+@app.get("/products", response_model=List[ProductRead])
+def list_products(language: Optional[str] = None, db: Session = Depends(get_db)):
+    products = db.query(Product).all()
+    if language in ["fa","en","ar"]:
+        for p in products:
+            p.translations = [t for t in p.translations if t.language == language]
+    return products
 
 @app.get("/blog", response_model=List[BlogRead])
-def list_blog(language: Optional[str] = Query(None, description="fa, en, ar"), db: Session = Depends(get_db)):
+def list_blog(language: Optional[str] = None, db: Session = Depends(get_db)):
     blogs = db.query(BlogPost).all()
-    if language in ["fa", "en", "ar"]:
+    if language in ["fa","en","ar"]:
         for b in blogs:
             b.translations = [t for t in b.translations if t.language == language]
     return blogs
 
-# ---------------------------
-# Image Upload
-# ---------------------------
-@app.post("/admin/upload")
-def upload_image(file: UploadFile = File(...)):
-    path = save_upload(file)
-    return {"url": path}
+@app.get("/activities", response_model=List[ActivityRead])
+def list_activities(language: Optional[str] = None, db: Session = Depends(get_db)):
+    acts = db.query(Activity).all()
+    if language in ["fa","en","ar"]:
+        for a in acts:
+            a.translations = [t for t in a.translations if t.language == language]
+    return acts
+
+@app.get("/about", response_model=Optional[AboutRead])
+def get_about(db: Session = Depends(get_db)):
+    return db.query(About).first()
 
 # ---------------------------
-# Health check
+# Health Check
 # ---------------------------
 @app.get("/ping")
 def ping():
