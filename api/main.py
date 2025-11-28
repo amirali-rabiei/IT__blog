@@ -326,6 +326,37 @@ def delete_activity_endpoint(activity_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
+# --- Get single product ---
+@app.get("/products/{product_id}", response_model=ProductRead)
+def get_product(product_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if language in ["fa", "en", "ar"]:
+        product.translations = [t for t in product.translations if t.language == language]
+    return product
+
+# --- Get single blog post ---
+@app.get("/blog/{post_id}", response_model=BlogRead)
+def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    if language in ["fa", "en", "ar"]:
+        post.translations = [t for t in post.translations if t.language == language]
+    return post
+
+# --- Get single activity ---
+@app.get("/activities/{activity_id}", response_model=ActivityRead)
+def get_activity(activity_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    act = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not act:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if language in ["fa", "en", "ar"]:
+        act.translations = [t for t in act.translations if t.language == language]
+    return act
+
+
 # --- About ---
 @app.post("/admin/about")
 def set_about(content: str = Form(...), db: Session = Depends(get_db)):
