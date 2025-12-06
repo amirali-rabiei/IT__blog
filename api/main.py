@@ -252,6 +252,14 @@ def get_product(product_id: int, language: Optional[str] = None, db: Session = D
         product.translations = [t for t in product.translations if t.language == language]
     return product
 
+@app.get("/products", response_model=List[ProductRead])
+def list_products(language: Optional[str] = None, db: Session = Depends(get_db)):
+    products = db.query(Product).all()
+    if language in ["fa","en","ar"]:
+        for p in products:
+            p.translations = [t for t in p.translations if t.language == language]
+    return products
+
 # Blog CRUD
 @app.post("/admin/blog", response_model=BlogRead)
 def create_blog(
