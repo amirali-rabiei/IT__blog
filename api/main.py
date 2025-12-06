@@ -25,6 +25,8 @@ Base = declarative_base()
 # ---------------------------
 # Database Models
 # ---------------------------
+
+# Products
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
@@ -36,12 +38,13 @@ class ProductTranslation(Base):
     __tablename__ = "product_translations"
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    language = Column(String(2), nullable=False)  # fa, en, ar
+    language = Column(String(2), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     content = Column(Text, nullable=True)
     product = relationship("Product", back_populates="translations")
 
+# Blog
 class BlogPost(Base):
     __tablename__ = "blog_posts"
     id = Column(Integer, primary_key=True, index=True)
@@ -59,6 +62,7 @@ class BlogTranslation(Base):
     content = Column(Text, nullable=True)
     blog = relationship("BlogPost", back_populates="translations")
 
+# Activity
 class Activity(Base):
     __tablename__ = "activities"
     id = Column(Integer, primary_key=True, index=True)
@@ -76,10 +80,20 @@ class ActivityTranslation(Base):
     content = Column(Text, nullable=True)
     activity = relationship("Activity", back_populates="translations")
 
+# About
 class About(Base):
     __tablename__ = "about"
     id = Column(Integer, primary_key=True, index=True)
     content = Column(Text, nullable=True)
+
+# Parent Companies
+class ParentCompany(Base):
+    __tablename__ = "parent_companies"
+    id = Column(Integer, primary_key=True, index=True)
+    image = Column(String(512), nullable=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 Base.metadata.create_all(bind=engine)
 
@@ -114,11 +128,20 @@ class AboutRead(BaseModel):
     class Config:
         orm_mode = True
 
+class ParentCompanyRead(BaseModel):
+    id: int
+    image: Optional[str]
+    title: str
+    description: Optional[str]
+    created_at: datetime
+    class Config:
+        orm_mode = True
+
 # ---------------------------
 # App Config
 # ---------------------------
-app = FastAPI(title="Multi-language Company Backend")
-origins = ["http://localhost:5173", "https://it-blog.vercel.app"]
+app = FastAPI(title="Company Backend with Parent Companies")
+origins = ["*"]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -139,10 +162,11 @@ def save_upload(file: UploadFile) -> str:
     with open(path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return f"/uploads/{new_name}"
+
 def update_translations(db: Session, item, translations_data: dict, model_translation):
     for lang in ["fa", "en", "ar"]:
         t_data = translations_data.get(lang)
-        if t_data and t_data.get("title"):  # فقط اگر title پر شده باشد
+        if t_data and t_data.get("title"):
             trans = db.query(model_translation).filter_by(**{
                 f"{model_translation.__tablename__.split('_')[0]}_id": item.id,
                 "language": lang
@@ -162,12 +186,11 @@ def update_translations(db: Session, item, translations_data: dict, model_transl
     db.commit()
     db.refresh(item)
 
-
 # ---------------------------
 # CRUD Endpoints
 # ---------------------------
 
-# --- Products ---
+# Products CRUD
 @app.post("/admin/products", response_model=ProductRead)
 def create_product(
     image: UploadFile = File(None),
@@ -220,7 +243,7 @@ def delete_product_endpoint(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# --- Blog ---
+# Blog CRUD
 @app.post("/admin/blog", response_model=BlogRead)
 def create_blog(
     image: UploadFile = File(None),
@@ -273,7 +296,7 @@ def delete_blog_endpoint(post_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# --- Activity ---
+# Activity CRUD
 @app.post("/admin/activity", response_model=ActivityRead)
 def create_activity(
     image: UploadFile = File(None),
@@ -326,38 +349,59 @@ def delete_activity_endpoint(activity_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# --- Get single product ---
-@app.get("/products/{product_id}", response_model=ProductRead)
-def get_product(product_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    if language in ["fa", "en", "ar"]:
-        product.translations = [t for t in product.translations if t.language == language]
-    return product
+# Parent Companies CRUD
+@app.post("/admin/parent-companies", response_model=ParentCompanyRead)
+def create_parent_company(
+    image: UploadFile = File(None),
+    title: str = Form(...),
+    description: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    company = ParentCompany(
+        image=save_upload(image) if image else None,
+        title=title,
+        description=description
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    return company
 
-# --- Get single blog post ---
-@app.get("/blog/{post_id}", response_model=BlogRead)
-def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
-    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Blog post not found")
-    if language in ["fa", "en", "ar"]:
-        post.translations = [t for t in post.translations if t.language == language]
-    return post
+@app.put("/admin/parent-companies/{company_id}", response_model=ParentCompanyRead)
+def update_parent_company(
+    company_id: int,
+    image: UploadFile = File(None),
+    title: str = Form(None),
+    description: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    company = db.query(ParentCompany).filter(ParentCompany.id == company_id).first()
+    if not company:
+        raise HTTPException(404, "Parent company not found")
+    if image:
+        company.image = save_upload(image)
+    if title:
+        company.title = title
+    if description:
+        company.description = description
+    db.commit()
+    db.refresh(company)
+    return company
 
-# --- Get single activity ---
-@app.get("/activities/{activity_id}", response_model=ActivityRead)
-def get_activity(activity_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
-    act = db.query(Activity).filter(Activity.id == activity_id).first()
-    if not act:
-        raise HTTPException(status_code=404, detail="Activity not found")
-    if language in ["fa", "en", "ar"]:
-        act.translations = [t for t in act.translations if t.language == language]
-    return act
+@app.delete("/admin/parent-companies/{company_id}")
+def delete_parent_company(company_id: int, db: Session = Depends(get_db)):
+    company = db.query(ParentCompany).filter(ParentCompany.id == company_id).first()
+    if not company:
+        raise HTTPException(404, "Parent company not found")
+    db.delete(company)
+    db.commit()
+    return {"ok": True}
 
+@app.get("/parent-companies", response_model=List[ParentCompanyRead])
+def list_parent_companies(db: Session = Depends(get_db)):
+    return db.query(ParentCompany).all()
 
-# --- About ---
+# About
 @app.post("/admin/about")
 def set_about(content: str = Form(...), db: Session = Depends(get_db)):
     about = db.query(About).first()
@@ -369,43 +413,12 @@ def set_about(content: str = Form(...), db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# --- Upload Image ---
+# Upload Image
 @app.post("/admin/upload")
 def upload_image(file: UploadFile = File(...)):
     return {"url": save_upload(file)}
 
-# --- Public Endpoints ---
-@app.get("/products", response_model=List[ProductRead])
-def list_products(language: Optional[str] = None, db: Session = Depends(get_db)):
-    products = db.query(Product).all()
-    if language in ["fa","en","ar"]:
-        for p in products:
-            p.translations = [t for t in p.translations if t.language == language]
-    return products
-
-@app.get("/blog", response_model=List[BlogRead])
-def list_blog(language: Optional[str] = None, db: Session = Depends(get_db)):
-    blogs = db.query(BlogPost).all()
-    if language in ["fa","en","ar"]:
-        for b in blogs:
-            b.translations = [t for t in b.translations if t.language == language]
-    return blogs
-
-@app.get("/activities", response_model=List[ActivityRead])
-def list_activities(language: Optional[str] = None, db: Session = Depends(get_db)):
-    acts = db.query(Activity).all()
-    if language in ["fa","en","ar"]:
-        for a in acts:
-            a.translations = [t for t in a.translations if t.language == language]
-    return acts
-
-@app.get("/about", response_model=Optional[AboutRead])
-def get_about(db: Session = Depends(get_db)):
-    return db.query(About).first()
-
-# ---------------------------
 # Health Check
-# ---------------------------
 @app.get("/ping")
 def ping():
     return {"pong": True}
