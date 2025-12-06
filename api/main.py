@@ -243,6 +243,15 @@ def delete_product_endpoint(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
+@app.get("/products/{product_id}", response_model=ProductRead)
+def get_product(product_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if language in ["fa", "en", "ar"]:
+        product.translations = [t for t in product.translations if t.language == language]
+    return product
+
 # Blog CRUD
 @app.post("/admin/blog", response_model=BlogRead)
 def create_blog(
@@ -296,6 +305,15 @@ def delete_blog_endpoint(post_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
+@app.get("/blog/{post_id}", response_model=BlogRead)
+def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    if language in ["fa", "en", "ar"]:
+        post.translations = [t for t in post.translations if t.language == language]
+    return post
+
 # Activity CRUD
 @app.post("/admin/activity", response_model=ActivityRead)
 def create_activity(
@@ -348,6 +366,15 @@ def delete_activity_endpoint(activity_id: int, db: Session = Depends(get_db)):
     db.delete(act)
     db.commit()
     return {"ok": True}
+
+@app.get("/activities/{activity_id}", response_model=ActivityRead)
+def get_activity(activity_id: int, language: Optional[str] = None, db: Session = Depends(get_db)):
+    act = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not act:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if language in ["fa", "en", "ar"]:
+        act.translations = [t for t in act.translations if t.language == language]
+    return act
 
 # Parent Companies CRUD
 @app.post("/admin/parent-companies", response_model=ParentCompanyRead)
