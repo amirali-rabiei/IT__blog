@@ -322,6 +322,14 @@ def get_blog(post_id: int, language: Optional[str] = None, db: Session = Depends
         post.translations = [t for t in post.translations if t.language == language]
     return post
 
+@app.get("/blog", response_model=List[BlogRead])
+def list_blog(language: Optional[str] = None, db: Session = Depends(get_db)):
+    blogs = db.query(BlogPost).all()
+    if language in ["fa","en","ar"]:
+        for b in blogs:
+            b.translations = [t for t in b.translations if t.language == language]
+    return blogs
+
 # Activity CRUD
 @app.post("/admin/activity", response_model=ActivityRead)
 def create_activity(
@@ -383,6 +391,14 @@ def get_activity(activity_id: int, language: Optional[str] = None, db: Session =
     if language in ["fa", "en", "ar"]:
         act.translations = [t for t in act.translations if t.language == language]
     return act
+
+@app.get("/activities", response_model=List[ActivityRead])
+def list_activities(language: Optional[str] = None, db: Session = Depends(get_db)):
+    acts = db.query(Activity).all()
+    if language in ["fa","en","ar"]:
+        for a in acts:
+            a.translations = [t for t in a.translations if t.language == language]
+    return acts
 
 # Parent Companies CRUD
 @app.post("/admin/parent-companies", response_model=ParentCompanyRead)
