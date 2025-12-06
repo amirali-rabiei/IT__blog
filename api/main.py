@@ -401,6 +401,14 @@ def delete_parent_company(company_id: int, db: Session = Depends(get_db)):
 def list_parent_companies(db: Session = Depends(get_db)):
     return db.query(ParentCompany).all()
 
+@app.get("/parent-companies/{company_id}", response_model=ParentCompanyRead)
+def get_parent_company(company_id: int, db: Session = Depends(get_db)):
+    company = db.query(ParentCompany).filter(ParentCompany.id == company_id).first()
+    if not company:
+        raise HTTPException(404, "Parent company not found")
+    return company
+
+
 # About
 @app.post("/admin/about")
 def set_about(content: str = Form(...), db: Session = Depends(get_db)):
