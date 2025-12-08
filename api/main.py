@@ -8,6 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, Session
 from datetime import datetime
 import os, shutil, uuid
+from fastapi.responses import JSONResponse
 
 # ---------------------------
 # Paths and DB
@@ -476,6 +477,23 @@ def set_about(content: str = Form(...), db: Session = Depends(get_db)):
 @app.post("/admin/upload")
 def upload_image(file: UploadFile = File(...)):
     return {"url": save_upload(file)}
+
+sessions = {}
+
+@app.post("/admin/login")
+def admin_login(request: Request, username: str = Form(...), password: str = Form(...)):
+    if username == "admin" and password == "admin":
+        sessions["logged_in"] = True
+        return {"logged_in": True}
+    return JSONResponse(status_code=401, content={"detail": "Invalid credentials"})
+
+@app.get("/admin/check")
+def admin_check():
+    if sessions.get("logged_in"):
+        return {"ok": True}
+    return JSONResponse(status_code=403, content={"detail": "Not logged in"})
+
+
 
 # Health Check
 @app.get("/ping")
