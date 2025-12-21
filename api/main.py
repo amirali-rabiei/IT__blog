@@ -493,7 +493,10 @@ def admin_check():
         return {"ok": True}
     return JSONResponse(status_code=403, content={"detail": "Not logged in"})
 
-
+@app.post("/admin/logout")
+def admin_logout():
+    sessions.pop("logged_in", None)
+    return {"logged_out": True}
 
 # Health Check
 @app.get("/ping")
